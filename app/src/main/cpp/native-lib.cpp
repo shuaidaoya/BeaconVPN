@@ -11,8 +11,7 @@
 static bool isExpectedSignature(const jbyte* hash, jsize hashLen) {
     if (hash == nullptr || hashLen != 32) return false;
 
-    // SHA-256 签名是在运行时从非文本片段中重建
-    // 占位签名示例 (全零 SHA-256)
+   // 占位签名示例 (全零 SHA-256)
 // 以下填写通过对签名文件hash值（去掉冒号）执行Python示例脚本生成的混淆双数组
 static const uint8_t partA[32] = {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -233,7 +232,6 @@ static void nativeVerifySignature(JNIEnv* env, jclass /* clazz */, jobject conte
 }
 
 static jstring nativeGetNativeKey(JNIEnv* env, jobject /* this */) {
-    // 密钥在运行时由两个非文本片段重新构建
     // AES密钥示例: "MySecretKey12345" (16 bytes)
 // 以下填写通过对AES密钥执行Python示例脚本生成的混淆双数组
 static const uint8_t partA[16] = {

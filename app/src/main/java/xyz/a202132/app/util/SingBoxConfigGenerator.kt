@@ -242,7 +242,7 @@ class SingBoxConfigGenerator {
         
         val rules = JsonArray()
         
-        // 1. Resolve Proxy Server Domains via Local DNS (Critical for domain-based proxies!)
+        // 1. 通过本地 DNS 解析代理服务器域名（对于基于域名的代理至关重要！）
         if (nodeDomains.isNotEmpty()) {
             rules.add(JsonObject().apply {
                 add("domain", JsonArray().apply { nodeDomains.forEach { add(it) } })
@@ -250,7 +250,7 @@ class SingBoxConfigGenerator {
             })
         }
         
-        // 2. Resolve CN Domains via Local DNS (using rule_set)
+        // 2. 通过本地 DNS 解析 CN 域名（使用 rule_set）
         if (proxyMode == ProxyMode.SMART) {
             rules.add(JsonObject().apply {
                 add("rule_set", JsonArray().apply {
@@ -260,7 +260,7 @@ class SingBoxConfigGenerator {
             })
         }
         
-        // DNS strategy based on IPv6 mode
+        // 基于 IPv6 模式的 DNS 策略
         val dnsStrategy = when (ipv6Mode) {
             IPv6RoutingMode.ONLY -> "ipv6_only"
             IPv6RoutingMode.PREFER -> "prefer_ipv6"
@@ -421,11 +421,11 @@ class SingBoxConfigGenerator {
                             addProperty("fingerprint", uri.getQueryParameter("fp") ?: "chrome")
                         })
                     }
-                    addProperty("insecure", uri.getQueryParameter("allowInsecure") == "1")
+                    addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify"))
                 })
             }
             
-            val transport = uri.getQueryParameter("type") ?: "tcp"
+            val transport = normalizeTransportType(uri.getQueryParameter("type"))
             if (transport != "tcp" && transport != "none") {
                 add("transport", createTransport(transport, uri))
             }
@@ -451,10 +451,18 @@ class SingBoxConfigGenerator {
                 add("tls", JsonObject().apply {
                     addProperty("enabled", true)
                     addProperty("server_name", vmessConfig.get("sni")?.asString ?: vmessConfig.get("host")?.asString ?: node.server)
+                    val insecureField = vmessConfig.get("allowInsecure") ?: vmessConfig.get("allow_insecure")
+                    val isInsecure = when {
+                        insecureField == null -> false
+                        insecureField.isJsonPrimitive && insecureField.asJsonPrimitive.isBoolean -> insecureField.asBoolean
+                        insecureField.isJsonPrimitive -> insecureField.asString.let { it == "1" || it.equals("true", ignoreCase = true) }
+                        else -> false
+                    }
+                    addProperty("insecure", isInsecure)
                 })
             }
             
-            val network = vmessConfig.get("net")?.asString ?: "tcp"
+            val network = normalizeTransportType(vmessConfig.get("net")?.asString)
             if (network != "tcp" && network != "none") {
                 add("transport", createVmessTransport(network, vmessConfig))
             }
@@ -476,10 +484,10 @@ class SingBoxConfigGenerator {
                 addProperty("enabled", true)
                 val sni = uri.getQueryParameter("sni") ?: uri.getQueryParameter("host")
                 addProperty("server_name", sni ?: node.server)
-                addProperty("insecure", uri.getQueryParameter("allowInsecure") == "1")
+                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify"))
             })
             
-            val transport = uri.getQueryParameter("type") ?: "tcp"
+            val transport = normalizeTransportType(uri.getQueryParameter("type"))
             if (transport != "tcp" && transport != "none") {
                 add("transport", createTransport(transport, uri))
             }
@@ -490,6 +498,7 @@ class SingBoxConfigGenerator {
         val rawLink = node.getRawLinkPlain()
         val normalizedLink = rawLink.replace("hy2://", "hysteria2://")
         val uri = Uri.parse(normalizedLink)
+        val alpnValues = parseCsvParams(queryParamFirst(uri, "alpn"))
         
         return JsonObject().apply {
             addProperty("type", "hysteria2")
@@ -500,7 +509,10 @@ class SingBoxConfigGenerator {
             add("tls", JsonObject().apply {
                 addProperty("enabled", true)
                 addProperty("server_name", uri.getQueryParameter("sni") ?: node.server)
-                addProperty("insecure", uri.getQueryParameter("insecure") == "1")
+                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify"))
+                if (alpnValues.isNotEmpty()) {
+                    add("alpn", JsonArray().apply { alpnValues.forEach { add(it) } })
+                }
             })
             
             val obfsType = uri.getQueryParameter("obfs")
@@ -520,7 +532,7 @@ class SingBoxConfigGenerator {
         val uri = Uri.parse(rawLink)
         val password = uri.userInfo ?: queryParamFirst(uri, "password", "pass", "token") ?: ""
         val sni = queryParamFirst(uri, "sni", "host") ?: node.server
-        val insecure = queryParamEnabled(uri, "allowInsecure", "insecure", "skip-cert-verify")
+        val insecure = queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify")
         val alpnValues = parseCsvParams(queryParamFirst(uri, "alpn"))
         val fingerprint = queryParamFirst(uri, "fp", "fingerprint", "client-fingerprint")
         val idleSessionCheckInterval = queryParamFirst(uri, "idle_session_check_interval")
@@ -564,6 +576,8 @@ class SingBoxConfigGenerator {
             ?: uri.getQueryParameter("token")
             ?: userInfoParts.getOrNull(1)
             ?: ""
+        val alpnValues = parseCsvParams(queryParamFirst(uri, "alpn"))
+        val fingerprint = queryParamFirst(uri, "fp", "fingerprint", "client-fingerprint")
 
         return JsonObject().apply {
             addProperty("type", "tuic")
@@ -576,10 +590,19 @@ class SingBoxConfigGenerator {
             add("tls", JsonObject().apply {
                 addProperty("enabled", true)
                 addProperty("server_name", uri.getQueryParameter("sni") ?: uri.getQueryParameter("host") ?: node.server)
-                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "insecure", "skip-cert-verify"))
+                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify"))
+                if (alpnValues.isNotEmpty()) {
+                    add("alpn", JsonArray().apply { alpnValues.forEach { add(it) } })
+                }
+                if (!fingerprint.isNullOrBlank()) {
+                    add("utls", JsonObject().apply {
+                        addProperty("enabled", true)
+                        addProperty("fingerprint", fingerprint)
+                    })
+                }
             })
 
-            uri.getQueryParameter("congestion_control")?.let { addProperty("congestion_control", it) }
+            queryParamFirst(uri, "congestion_control", "cc")?.let { addProperty("congestion_control", it) }
             uri.getQueryParameter("udp_relay_mode")?.let { addProperty("udp_relay_mode", it) }
             uri.getQueryParameter("network")?.let { addProperty("network", it) }
             uri.getQueryParameter("heartbeat")?.let { addProperty("heartbeat", it) }
@@ -610,7 +633,7 @@ class SingBoxConfigGenerator {
             add("tls", JsonObject().apply {
                 addProperty("enabled", true)
                 addProperty("server_name", uri.getQueryParameter("sni") ?: uri.getQueryParameter("host") ?: node.server)
-                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "insecure", "skip-cert-verify"))
+                addProperty("insecure", queryParamEnabled(uri, "allowInsecure", "allow_insecure", "insecure", "skip-cert-verify"))
             })
         }
     }
@@ -759,6 +782,18 @@ class SingBoxConfigGenerator {
             .mapNotNull { it.trim().toIntOrNull() }
         return if (values.size == 3) values else null
     }
+
+    /**
+     * 统一传输层别名，避免将订阅中的新字段原样下发给当前 libbox。
+     * 当前内核不识别 xhttp，但二进制中包含 httpupgrade 能力，因此先降级映射。
+     */
+    private fun normalizeTransportType(type: String?): String {
+        return when (type?.trim()?.lowercase()) {
+            null, "", "tcp" -> "tcp"
+            "xhttp" -> "httpupgrade"
+            else -> type.trim().lowercase()
+        }
+    }
     
     private fun createTransport(type: String, uri: Uri): JsonObject {
         return JsonObject().apply {
@@ -774,6 +809,10 @@ class SingBoxConfigGenerator {
                 "http" -> {
                     addProperty("path", uri.getQueryParameter("path") ?: "/")
                     uri.getQueryParameter("host")?.let { add("host", JsonArray().apply { add(it) }) }
+                }
+                "httpupgrade" -> {
+                    addProperty("path", uri.getQueryParameter("path") ?: "/")
+                    uri.getQueryParameter("host")?.let { addProperty("host", it) }
                 }
             }
         }
@@ -796,6 +835,16 @@ class SingBoxConfigGenerator {
                         add("host", JsonArray().apply { add(it) })
                     }
                 }
+                "http" -> {
+                    addProperty("path", config.get("path")?.asString ?: "/")
+                    config.get("host")?.asString?.let {
+                        add("host", JsonArray().apply { add(it) })
+                    }
+                }
+                "httpupgrade" -> {
+                    addProperty("path", config.get("path")?.asString ?: "/")
+                    config.get("host")?.asString?.let { addProperty("host", it) }
+                }
             }
         }
     }
@@ -803,13 +852,13 @@ class SingBoxConfigGenerator {
     private fun createRoute(proxyMode: ProxyMode, nodeDomains: List<String>, nodeIPs: List<String>, bypassLan: Boolean = true): JsonObject {
         val rules = JsonArray()
         
-        // 1. Hijack DNS Traffic
+        // 1. 劫持 DNS 流量
         rules.add(JsonObject().apply {
             addProperty("protocol", "dns")
             addProperty("outbound", "dns-out")
         })
         
-        // 2. Loopback/Private IPs -> Direct (仅当 bypassLan 开启时)
+        // 2. 环回/私有 IP 地址 -> 直接l连接 (仅当 bypassLan 开启时)
         if (bypassLan) {
             rules.add(JsonObject().apply {
                 addProperty("ip_is_private", true)
@@ -817,7 +866,7 @@ class SingBoxConfigGenerator {
             })
         }
 
-        // 3. Proxy Server Domains -> Direct (Avoid Loop)
+        // 3. 代理服务器域名 -> 直接连接（避免循环）
         if (nodeDomains.isNotEmpty()) {
             rules.add(JsonObject().apply {
                 add("domain", JsonArray().apply { nodeDomains.forEach { add(it) } })
@@ -826,7 +875,7 @@ class SingBoxConfigGenerator {
         }
         
         if (proxyMode == ProxyMode.SMART) {
-            // 4. CN Domains -> Direct (using geosite-cn rule_set)
+            // 4. 中国域名 -> 直接访问（使用 geosite-cn 规则集）
             rules.add(JsonObject().apply {
                 add("rule_set", JsonArray().apply {
                     add("geosite-cn")
@@ -834,7 +883,7 @@ class SingBoxConfigGenerator {
                 addProperty("outbound", "direct")
             })
 
-            // 5. CN IPs -> Direct (using geoip-cn rule_set)
+            // 5. 中国 IP 地址 -> 直接访问（使用 geoip-cn 规则集）
             rules.add(JsonObject().apply {
                 add("rule_set", JsonArray().apply {
                     add("geoip-cn")
@@ -843,7 +892,7 @@ class SingBoxConfigGenerator {
             })
         }
         
-        // 6. Proxy Server IPs -> Direct (在所有模式下都需要，避免路由死循环)
+        // 6. 代理服务器 IP -> 直接连接 (在所有模式下都需要，避免路由死循环)
         if (nodeIPs.isNotEmpty()) {
             rules.add(JsonObject().apply {
                 add("ip_cidr", JsonArray().apply {

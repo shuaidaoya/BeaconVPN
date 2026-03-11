@@ -39,7 +39,7 @@ class SpeedTestService {
         onProgress: (currentSpeedMbps: Float, progress: Float) -> Unit
     ): SpeedTestResult {
         isCancelled = false
-        // Use a random query param to avoid caching
+        // 使用随机查询参数以避免缓存
         val url = "${AppConfig.SPEED_TEST_DOWNLOAD_URL}?bytes=$size&r=${System.currentTimeMillis()}"
         val request = Request.Builder().url(url).build()
 
@@ -82,8 +82,8 @@ class SpeedTestService {
                 }
             }
         } catch (e: Exception) {
-            // If cancelled, we might still want to return partial result or rethrow?
-            // For now, if cancelled, we just stop. If error, rethrow.
+            // 如果取消，我们是否仍然希望返回部分结果或重新抛出异常？
+            // 目前，如果取消，我们就直接停止。如果出错，则重新抛出异常。
             if (!isCancelled) throw e
         }
 
@@ -110,8 +110,8 @@ class SpeedTestService {
             override fun contentLength() = size
 
             override fun writeTo(sink: BufferedSink) {
-                // Generate chunk of data to write
-                val buffer = ByteArray(8192) { 1 } // Dummy data
+                // 生成要写入的数据块
+                val buffer = ByteArray(8192) { 1 }
                 var uploaded = 0L
                 var lastUpdate = System.currentTimeMillis()
                 val updateInterval = 100 // ms
@@ -160,7 +160,7 @@ class SpeedTestService {
 
         val endTime = System.currentTimeMillis()
         val duration = endTime - startTime
-        val realBytes = if (finalBytesUploaded > 0) finalBytesUploaded else size // Fallback if writeTo completed
+        val realBytes = if (finalBytesUploaded > 0) finalBytesUploaded else size // 如果 writeTo 操作完成，则回退
         val avgSpeed = if (duration > 0) (realBytes * 8f / 1_000_000f) / (duration / 1000f) else 0f
 
         Log.d(TAG, "Upload test finished: avg=${avgSpeed}Mbps, peak=${peakSpeed}Mbps, duration=${duration}ms")

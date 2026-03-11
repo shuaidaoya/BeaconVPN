@@ -142,7 +142,7 @@ class PerAppProxyViewModel(application: Application) : AndroidViewModel(applicat
                             )
                         }
                     
-                    // Initial Sort
+                    // 初始排序
                     sortApps(parsedApps, currentSelected)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load installed apps", e)

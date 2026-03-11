@@ -98,6 +98,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo = _updateInfo.asStateFlow()
+    private val _startupUpdateCheckCompleted =
+        MutableStateFlow(AppConfig.STARTUP_SPLASH_DURATION_SECONDS <= 0)
+    val startupUpdateCheckCompleted = _startupUpdateCheckCompleted.asStateFlow()
     
     private val _error = MutableStateFlow<String?>(null)
 
@@ -251,7 +254,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     checkNotice()
-                    checkUpdate(isAuto = true)
+                    checkUpdate(isAuto = true, trackStartupSplash = true)
                 }
             }
         }
@@ -384,7 +387,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 2. 检查是否开启备用节点 (skipBackupMode 时强制为 false)
-            val isBackupEnabled = if (skipBackupMode) false else backupNodeEnabled.value
+            val isBackupEnabled = if (skipBackupMode) false else settingsRepository.backupNodeEnabled.first()
             var targetUrl: String? = null
 
             if (isBackupEnabled) {
@@ -1188,8 +1191,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 检查更新
      * @param isAuto 是否为自动检查 (不显示"已是最新"提示)
      */
-    fun checkUpdate(isAuto: Boolean = false) {
+    fun checkUpdate(isAuto: Boolean = false, trackStartupSplash: Boolean = false) {
         viewModelScope.launch {
+            if (trackStartupSplash) {
+                _startupUpdateCheckCompleted.value = false
+            }
             // 节流检查 (自动检查可跳过)
             if (!isAuto) {
                 val now = System.currentTimeMillis()
@@ -1226,11 +1232,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }.onFailure { e ->
                 Log.e(tag, "Failed to check update", e)
+            }.also {
+                if (trackStartupSplash) {
+                    _startupUpdateCheckCompleted.value = true
+                }
             }
         }
     }
     
-    // Download State
+    // 下载状态
     val downloadState = DownloadManager.downloadState
     
     /**
@@ -1238,14 +1248,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun openDownloadUrl() {
         updateInfo.value?.let { info ->
-            // Use DownloadManager to check if the file is already downloaded and valid
+            // 使用 DownloadManager 检查文件是否已下载且有效。
             val existingFile = DownloadManager.isApkReady(getApplication(), info.version)
             if (existingFile != null) {
-                // Determine if we need to show permission dialog first (handled in UI via status)
-                // But since we want to trigger install, we can set status to COMPLETED
-                // However, UI listens to status change. 
-                // If status is already COMPLETED, no change triggers.
-                // We should force installApk logic here.
+                // 确定是否需要先显示权限对话框（通过 UI 中的状态进行处理）
+                // 但由于我们想要触发安装，可以将状态设置为“已完成”
+                // 但是，UI 会监听状态更改。
+                // 如果状态已经是“已完成”，则不会触发任何更改。
+                // 我们应该在此处强制执行 installApk 逻辑。
                 installApk()
                 return
             }
@@ -1316,7 +1326,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    // UI Actions
+    // 用户界面操作
     fun showNodeList() {
         _showNodeList.value = true
     }

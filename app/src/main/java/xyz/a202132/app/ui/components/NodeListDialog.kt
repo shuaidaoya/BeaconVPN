@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,10 +15,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,16 +48,54 @@ fun NodeListDialog(
 ) {
     var showSearch by remember { mutableStateOf(false) }
     var keyword by remember { mutableStateOf("") }
-    val filteredNodes = remember(nodes, keyword) {
-        val query = keyword.trim()
-        if (query.isBlank()) {
+    var frozenNodeOrderIds by remember { mutableStateOf<List<String>?>(null) }
+    var wasTesting by remember { mutableStateOf(isTesting) }
+    var pendingScrollToTop by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(isTesting) {
+        if (isTesting) {
+            if (frozenNodeOrderIds == null) {
+                frozenNodeOrderIds = nodes.map { it.id }
+            }
+        } else {
+            if (wasTesting) {
+                pendingScrollToTop = true
+            }
+            frozenNodeOrderIds = null
+        }
+        wasTesting = isTesting
+    }
+
+    val displayNodes = remember(nodes, isTesting, frozenNodeOrderIds) {
+        if (!isTesting || frozenNodeOrderIds == null) {
             nodes
         } else {
-            nodes.filter { node ->
+            val nodeMap = nodes.associateBy { it.id }
+            val frozenNodes = frozenNodeOrderIds.orEmpty().mapNotNull(nodeMap::get)
+            val newNodes = nodes.filterNot { it.id in frozenNodeOrderIds.orEmpty() }
+            frozenNodes + newNodes
+        }
+    }
+
+    val filteredNodes = remember(displayNodes, keyword) {
+        val query = keyword.trim()
+        if (query.isBlank()) {
+            displayNodes
+        } else {
+            displayNodes.filter { node ->
                 node.getDisplayName().contains(query, ignoreCase = true) ||
                     node.name.contains(query, ignoreCase = true) ||
                     node.country?.contains(query, ignoreCase = true) == true
             }
+        }
+    }
+
+    LaunchedEffect(pendingScrollToTop, isTesting, frozenNodeOrderIds, filteredNodes.size) {
+        if (pendingScrollToTop && !isTesting && frozenNodeOrderIds == null && filteredNodes.isNotEmpty()) {
+            withFrameNanos { }
+            listState.scrollToItem(0)
+            pendingScrollToTop = false
         }
     }
 
@@ -196,11 +237,15 @@ fun NodeListDialog(
                         }
                     } else {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredNodes) { node ->
+                            items(
+                                items = filteredNodes,
+                                key = { it.id }
+                            ) { node ->
                                 NodeListItem(
                                     node = node,
                                     isSelected = node.id == selectedNodeId,

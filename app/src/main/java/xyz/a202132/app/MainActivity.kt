@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -13,19 +14,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import xyz.a202132.app.data.model.ProxyMode
-import xyz.a202132.app.service.ServiceManager
+import kotlinx.coroutines.delay
+import xyz.a202132.app.ui.components.StartupSplashOverlay
 import xyz.a202132.app.ui.screens.MainScreen
 import xyz.a202132.app.ui.screens.PerAppProxyScreen
-import xyz.a202132.app.ui.theme.BackgroundDark
 import xyz.a202132.app.ui.theme.FireflyVPNTheme
 import xyz.a202132.app.viewmodel.MainViewModel
 
@@ -57,6 +61,7 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureEdgeToEdge()
         
         // 请求通知权限 (Android 13+)
         requestNotificationPermission()
@@ -72,8 +77,38 @@ class MainActivity : ComponentActivity() {
                     
                     // 获取 ViewModel (在顶层获取，以便在两个屏幕间共享逻辑)
                     val viewModel: MainViewModel = viewModel()
+                    val startupUpdateCheckCompleted by viewModel.startupUpdateCheckCompleted.collectAsState()
+                    val splashDurationSeconds = AppConfig.STARTUP_SPLASH_DURATION_SECONDS.coerceAtLeast(0)
+                    var splashCountdownSeconds by remember(splashDurationSeconds) {
+                        mutableIntStateOf(splashDurationSeconds)
+                    }
+                    var splashTimedOut by remember(splashDurationSeconds) {
+                        mutableStateOf(splashDurationSeconds == 0)
+                    }
+                    var splashSkipped by remember { mutableStateOf(false) }
+                    val showStartupSplash =
+                        splashDurationSeconds > 0 &&
+                            !splashSkipped &&
+                            !splashTimedOut &&
+                            !startupUpdateCheckCompleted
+
+                    LaunchedEffect(splashDurationSeconds) {
+                        if (splashDurationSeconds == 0) return@LaunchedEffect
+                        splashCountdownSeconds = splashDurationSeconds
+                        splashTimedOut = false
+                        repeat(splashDurationSeconds) {
+                            delay(1000)
+                            splashCountdownSeconds = (splashCountdownSeconds - 1).coerceAtLeast(0)
+                        }
+                        splashTimedOut = true
+                    }
                     
-                    if (showPerAppProxyScreen) {
+                    if (showStartupSplash) {
+                        StartupSplashOverlay(
+                            countdownSeconds = splashCountdownSeconds,
+                            onSkip = { splashSkipped = true }
+                        )
+                    } else if (showPerAppProxyScreen) {
                         // 分应用代理设置界面
                         PerAppProxyScreen(
                             onBack = { hasChanges -> 
@@ -122,6 +157,18 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    private fun configureEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.isAppearanceLightStatusBars = false
+        insetsController.isAppearanceLightNavigationBars = false
+    }
+
     override fun onDestroy() {
         super.onDestroy()
     }

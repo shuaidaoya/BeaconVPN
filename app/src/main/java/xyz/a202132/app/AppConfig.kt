@@ -29,8 +29,10 @@ data class UnlockPrioritySite(
  * 应用配置常量
  */
 object AppConfig {
+    const val STARTUP_SPLASH_DURATION_SECONDS = 5 // 启动图倒计时时长，设为0则不启用
+
     // API URLs
-    const val SUBSCRIPTION_URL = "https://your-server.com/api//nodes" // 订阅URL
+    const val SUBSCRIPTION_URL = "https://your-server.com/api/nodes" // 订阅URL
     const val UPDATE_URL = "https://your-server.com/api//update" // 检查更新URL
     const val NOTICE_URL = "https://your-server.com/api//notice" // 公告通知URL
     const val WEBSITE_URL = "https://your-website.com" // 官网网站
@@ -50,7 +52,7 @@ object AppConfig {
     const val TCPING_TEST_TIMEOUT = 3000L // TCPing 超时（毫秒）
     
     const val URL_TEST_URL = "https://www.google.com/generate_204" // URL Test测试URL
-    const val URL_TEST_TIMEOUT = 5000L // URL Test 超时（毫秒）
+    const val URL_TEST_TIMEOUT = 3000L // URL Test 超时（毫秒）
     
     // Concurrency
     const val TCPING_CONCURRENCY = 16 // TCPing并发数

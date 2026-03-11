@@ -53,7 +53,7 @@ class BoxVpnService : VpnService() {
         var currentNodeName: String? = null
             private set
             
-        // 当前流量统计
+        // 褰撳墠娴侀噺缁熻
         var uploadSpeed: Long = 0L
             private set
         var downloadSpeed: Long = 0L
@@ -62,7 +62,7 @@ class BoxVpnService : VpnService() {
             private set
         var downloadTotal: Long = 0L
             private set
-            
+
         // 静态引用方便外部调用 (注意内存泄漏风险，但在单进程VPN服务中通常可控，或者在onDestroy置空)
         private var instance: BoxVpnService? = null
         
@@ -75,6 +75,7 @@ class BoxVpnService : VpnService() {
     private var platformInterface: BoxPlatformInterface? = null
     private val configGenerator = SingBoxConfigGenerator()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    @Volatile private var isStopping = false
     
     override fun onCreate() {
         super.onCreate()
@@ -93,7 +94,7 @@ class BoxVpnService : VpnService() {
                 } catch (e: Exception) {
                     ProxyMode.SMART
                 }
-                
+
                 // 立即启动前台服务，避免 ForegroundServiceDidNotStartInTimeException
                 startForeground(AppConfig.NOTIFICATION_ID, createNotification(nodeName))
                 
@@ -141,11 +142,11 @@ class BoxVpnService : VpnService() {
                 if (allNodes.isEmpty()) {
                     Log.e(TAG, "No nodes available")
                      withContext(Dispatchers.Main) {
-                        ServiceManager.notifyError("没有可用节点")
+                        ServiceManager.notifyError("娌℃湁鍙敤鑺傜偣")
                     }
                     return@launch
                 }
-                
+
                 // 2. 确定选中的节点ID
                 // 如果传入的是 specific node (非 Auto)，找到它的 ID
                 // 这里的 rawLink 可能只是为了兼容旧逻辑，实际我们更关心 nodeName 或 ID
@@ -154,7 +155,7 @@ class BoxVpnService : VpnService() {
                 if (nodeName != "自动选择") {
                     selectedNodeId = allNodes.find { it.getRawLinkPlain() == rawLink }?.id
                 }
-                
+
                 // 读取绕过局域网设置
                 val settingsRepo = xyz.a202132.app.data.repository.SettingsRepository(application)
                 val bypassLan = try {
@@ -162,12 +163,12 @@ class BoxVpnService : VpnService() {
                 } catch (e: Exception) {
                     true // 默认开启
                 }
-                
+
                 // 读取 IPv6 路由模式
                 val ipv6Mode = try {
                     settingsRepo.ipv6RoutingMode.first()
                 } catch (e: Exception) {
-                    xyz.a202132.app.data.model.IPv6RoutingMode.DISABLED // 默认禁用
+                    xyz.a202132.app.data.model.IPv6RoutingMode.DISABLED  // 默认禁用
                 }
                 
                 Log.d(TAG, "Generating config with ${allNodes.size} nodes, selected: $selectedNodeId, bypassLan: $bypassLan, ipv6Mode: $ipv6Mode")
@@ -179,7 +180,7 @@ class BoxVpnService : VpnService() {
                 val config = configGenerator.generateConfig(allNodes, selectedNodeId, proxyMode, bypassLan, ipv6Mode)
                 deleteLegacyConfigFile()
                 logConfigForDebug(config)
-                
+
                 // 初始化 libbox
                 initializeLibbox(config, nodeName)
                 
@@ -201,7 +202,7 @@ class BoxVpnService : VpnService() {
                 if (!workDir.exists()) {
                     workDir.mkdirs()
                 }
-                
+
                 // libbox 1.13.x 使用 SetupOptions
                 val options = io.nekohasekai.libbox.SetupOptions().apply {
                     basePath = workDir.absolutePath
@@ -209,14 +210,14 @@ class BoxVpnService : VpnService() {
                     tempPath = cacheDir.absolutePath
                 }
                 Libbox.setup(options)
-                
+
                 // 读取配置文件内容
                 Log.d(TAG, "Config content length: ${configContent.length}")
-                
+
                 // 创建平台接口并启动网络监控
                 platformInterface = BoxPlatformInterface(this@BoxVpnService)
                 platformInterface?.startNetworkMonitor()
-                
+
                 // 创建 CommandServerHandler
                 val serverHandler = object : io.nekohasekai.libbox.CommandServerHandler {
                     override fun serviceStop() {
@@ -235,16 +236,16 @@ class BoxVpnService : VpnService() {
                         Log.d(TAG, "Debug: $message")
                     }
                 }
-                
+
                 // 创建 CommandServer（替代旧版 BoxService）
                 commandServer = Libbox.newCommandServer(serverHandler, platformInterface)
                 commandServer?.start()
-                
+
                 // 启动或重载 sing-box 服务实例
                 val overrideOptions = io.nekohasekai.libbox.OverrideOptions()
                 commandServer?.startOrReloadService(configContent, overrideOptions)
                 deleteLegacyConfigFile()
-                
+
                 // 启动流量监控和组状态监控
                 startCommandClient()
                 startTrafficMonitor()
@@ -252,7 +253,7 @@ class BoxVpnService : VpnService() {
                 withContext(Dispatchers.Main) {
                     isRunning = true
                     currentNodeName = nodeName
-                    
+
                     // 通知UI更新
                     ServiceManager.notifyStateChange()
                 }
@@ -265,7 +266,7 @@ class BoxVpnService : VpnService() {
             }
         }
     }
-    
+
     // Command Client 相关
     private var commandClientJob: kotlinx.coroutines.Job? = null
     private var commandClient: io.nekohasekai.libbox.CommandClient? = null
@@ -277,8 +278,8 @@ class BoxVpnService : VpnService() {
         statusShapeLogged = false
         commandClientJob = serviceScope.launch {
             try {
-                delay(1000) // 等待服务启动
-                
+                delay(1000)  // 等待服务启动
+
                 // 检查服务是否仍在运行，避免在 VPN 已停止后尝试连接
                 if (!isRunning) {
                     Log.d(TAG, "Command client skipped: VPN already stopped")
@@ -346,7 +347,7 @@ class BoxVpnService : VpnService() {
                     override fun updateClashMode(newMode: String?) {}
                     override fun writeConnectionEvents(events: io.nekohasekai.libbox.ConnectionEvents?) {}
                 }
-                
+
                 // 再次检查，因为创建 handler 可能有些耗时
                 if (!isRunning) {
                     Log.d(TAG, "Command client skipped: VPN stopped during setup")
@@ -383,7 +384,7 @@ class BoxVpnService : VpnService() {
                 // 选择 proxy 组的节点
                 commandClient?.selectOutbound("proxy", nodeId)
                 Log.d(TAG, "Selected node: $nodeId")
-                
+
                 // 更新当前节点名称 (尝试从数据库获取或直接更新UI显示)
                 // 这里简单更新 currentNodeName，实际上 MainViewModel 会负责 UI 更新
                 // 也可以在这里查询数据库获取名称，但为了性能暂略
@@ -395,12 +396,12 @@ class BoxVpnService : VpnService() {
 
     // Traffic Monitor (使用 TrafficStats)
     private var trafficMonitorJob: kotlinx.coroutines.Job? = null
-    
+
     // 上次流量记录（用于计算速度）
     private var lastTxBytes = 0L
     private var lastRxBytes = 0L
     private var lastUpdateTime = 0L
-    
+
     // 连接开始时的流量基准
     private var baseTxBytes = 0L
     private var baseRxBytes = 0L
@@ -446,19 +447,19 @@ class BoxVpnService : VpnService() {
                             // 计算速度 (bytes per second)
                             val txSpeed = ((currentTxBytes - lastTxBytes) / timeDelta).toLong()
                             val rxSpeed = ((currentRxBytes - lastRxBytes) / timeDelta).toLong()
-                            
+
                             // 避免显示负数，且如果网络断开则强制为0 (避免 Loopback/Retry 流量被计入)
                             if (isConnected) {
                                 uploadSpeed = if (txSpeed >= 0) txSpeed else 0
                                 downloadSpeed = if (rxSpeed >= 0) rxSpeed else 0
-                                
+
                                 // 仅在有网络时计算总流量（避免断网重连产生的无效流量被计入）
                                 val txTotal = currentTxBytes - baseTxBytes
                                 val rxTotal = currentRxBytes - baseRxBytes
                                  
                                 uploadTotal = if (txTotal >= 0) txTotal else 0
                                 downloadTotal = if (rxTotal >= 0) rxTotal else 0
-                                
+
                                 // 仅在有网络时更新基准值
                                 lastTxBytes = currentTxBytes
                                 lastRxBytes = currentRxBytes
@@ -472,7 +473,7 @@ class BoxVpnService : VpnService() {
                                 // baseTxBytes = currentTxBytes
                                 // baseRxBytes = currentRxBytes
                             }
-                            
+
                             // 通知 UI 更新
                             withContext(Dispatchers.Main) {
                                 ServiceManager.notifyStateChange()
@@ -631,6 +632,24 @@ class BoxVpnService : VpnService() {
 
         // 立即关闭 TUN，确保状态栏 VPN 图标尽快消失
         try {
+            if (isStopping) {
+                Log.d(TAG, "Stopping VPN skipped: stop already in progress")
+                return
+            }
+            isStopping = true
+
+            // 先停掉监控与命令通道，避免关闭阶段仍有后台任务继续占用核心资源。
+            stopCommandClient()
+            stopTrafficMonitor()
+
+            // 先解除底层网络绑定，帮助系统更早感知 VPN 已经开始 teardown。
+            try {
+                platformInterface?.prepareForVpnShutdown()
+                Log.d(TAG, "Underlying network detached in ${System.currentTimeMillis() - stopStartTime}ms")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error detaching underlying network", e)
+            }
+
             platformInterface?.closeTun()
             Log.d(TAG, "TUN closed in ${System.currentTimeMillis() - stopStartTime}ms")
         } catch (e: Exception) {
@@ -669,20 +688,20 @@ class BoxVpnService : VpnService() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error closing TUN immediately", e)
             }
-            
+
             // 停止当前连接
             stopVpnInternal()
-            
+
             // 短暂延迟确保资源完全释放
             delay(500)
-            
+
             // 重新启动（使用当前节点）
             if (savedNodeName != null) {
                 // 通知 UI 更新
                 withContext(Dispatchers.Main) {
                     updateNotification(savedNodeName)
                 }
-                
+
                 // 获取节点信息并重新连接
                 val nodeDao = xyz.a202132.app.data.local.AppDatabase.getInstance(application).nodeDao()
                 val allNodes = try {
@@ -699,28 +718,28 @@ class BoxVpnService : VpnService() {
                     } catch (e: Exception) {
                         ProxyMode.SMART
                     }
-                    
+
                     // 读取绕过局域网设置
                     val bypassLan = try {
                         settingsRepo.bypassLan.first()
                     } catch (e: Exception) {
                         true
                     }
-                    
+
                     // 读取 IPv6 路由模式
                     val ipv6Mode = try {
                         settingsRepo.ipv6RoutingMode.first()
                     } catch (e: Exception) {
                         xyz.a202132.app.data.model.IPv6RoutingMode.DISABLED
                     }
-                    
+
                     // 获取选中的节点
                     val selectedNodeId = try {
                         settingsRepo.selectedNodeId.first()
                     } catch (e: Exception) {
                         null
                     }
-                    
+
                     // 确保规则集文件存在
                     RuleManager.ensureRuleSets(application)
                     
@@ -739,21 +758,21 @@ class BoxVpnService : VpnService() {
             // 保存引用以便后续清理
             val pi = platformInterface
             platformInterface = null
-            
+
             // 0. 最优先关闭 TUN 接口，确保系统状态栏 VPN 图标立即消失
             try {
                 pi?.closeTun()
             } catch (e: Exception) {
                 Log.e(TAG, "Error closing TUN", e)
             }
-            
+
             // 1. 停止流量监控
             stopTrafficMonitor()
             stopCommandClient()
-            
+
             // 2. 停止 Network Monitor
-            pi?.stopNetworkMonitor()
-            
+            pi?.prepareForVpnShutdown()
+
             // 3. 停止 CommandServer 和 sing-box 服务
             try {
                 commandServer?.closeService()
@@ -784,12 +803,13 @@ class BoxVpnService : VpnService() {
             
             withContext(Dispatchers.Main) {
                 isRunning = false
+                isStopping = false
                 currentNodeName = null
                 uploadSpeed = 0L
                 downloadSpeed = 0L
                 uploadTotal = 0L
                 downloadTotal = 0L
-                
+
                 // 通知UI更新
                 ServiceManager.notifyStateChange()
             }
@@ -798,6 +818,9 @@ class BoxVpnService : VpnService() {
             
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping VPN", e)
+            withContext(Dispatchers.Main) {
+                isStopping = false
+            }
         }
     }
     
@@ -810,17 +833,18 @@ class BoxVpnService : VpnService() {
         Log.d(TAG, "onDestroy")
         // 立即取消所有协程
         serviceScope.cancel()
-        
+
         // 确保资源被清理（特别是 TUN 接口）
         // 即使 stopVpnInternal 正在运行，这里再次调用也是安全的（已做空判断）
         cleanupResources()
-        
+
         // 更新状态
         isRunning = false
+        isStopping = false
         if (instance == this) {
             instance = null
         }
-        
+
         // 通知 UI (防止 UI 停留在已连接状态)
         // 注意：onDestroy 后 ServiceManager可能无法立即通知到已销毁的 Activity，但 StateFlow 会更新
         ServiceManager.notifyStateChange()
@@ -875,11 +899,11 @@ class BoxVpnService : VpnService() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         // 格式化速度显示
         val upSpeedStr = ServiceManager.formatSpeed(upSpeed)
         val downSpeedStr = ServiceManager.formatSpeed(downSpeed)
-        
+
         // 构建通知内容 - 默认显示速度，展开显示总流量
         val contentText = "上传 $upSpeedStr  下载 $downSpeedStr"
         

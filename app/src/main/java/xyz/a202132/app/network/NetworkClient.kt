@@ -31,7 +31,7 @@ object NetworkClient {
         .setLenient()
         .create()
     
-    // String converter for subscription response
+    // 订阅响应的字符串转换器
     private val stringConverterFactory = object : Converter.Factory() {
         override fun responseBodyConverter(
             type: Type,
@@ -55,7 +55,7 @@ object NetworkClient {
     
     val apiService: ApiService = retrofit.create(ApiService::class.java)
     
-    // OkHttpClient for latency testing (shorter timeout)
+    // OkHttpClient 用于延迟测试（更短的超时时间）
     val latencyTestClient = withUserAgent(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)

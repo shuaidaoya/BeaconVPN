@@ -280,8 +280,10 @@ app/src/main/java/xyz/a202132/app/
 │   ├── components/               # 可复用 UI 组件
 │   │   ├── ConnectButton.kt     # 连接按钮
 │   │   ├── DrawerContent.kt     # 侧边栏内容
+│   │   ├── FullscreenDialogScaffold.kt     # 全屏对话框（暂未使用）
 │   │   ├── NodeListDialog.kt    # 节点列表弹窗（含工具按钮）
 │   │   ├── NodeSelector.kt      # 节点选择器
+│   │   ├── FullscreenDialogScaffold.kt     # 开屏启动图
 │   │   ├── TestPreferPanelDialog.kt # 测试择优面板（全屏横屏）
 │   │   └── TrafficStatsRow.kt   # 流量统计展示
 │   ├── dialogs/                  # 对话框

@@ -210,6 +210,22 @@ class BoxPlatformInterface(
         networkCallback = null
         defaultNetwork = null
     }
+
+    /**
+     * VPN 关闭前尽快解除底层网络绑定，帮助系统更早完成 VPN teardown。
+     */
+    fun prepareForVpnShutdown() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                service.setUnderlyingNetworks(null)
+                Log.d(TAG, "Underlying networks cleared")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear underlying networks", e)
+        }
+
+        stopNetworkMonitor()
+    }
     
     /**
      * 打开 TUN 接口 - 使用 libbox 传来的选项

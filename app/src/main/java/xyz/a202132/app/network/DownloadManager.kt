@@ -85,20 +85,20 @@ object DownloadManager {
                     return@withContext
                 }
                 
-                // Initialize checks
+                // 初始化检查
                 if (downloadUrl != url) {
-                    // New download request
+                    // 新下载请求
                     downloadUrl = url
-                    targetFile = tempFile // Work on temp file
+                    targetFile = tempFile // 处理临时文件
                     
-                    // Clear old temp files
+                    // 清理旧缓存文件
                     if (tempFile.exists()) {
-                         // Decide if we want to resume or restart. Protocol assumes resume if same url.
-                         // But here we are treating URL change as new download.
-                         // For simplicity, let's keep resume logic below check.
+                        // 决定是恢复下载还是重新开始下载。协议默认如果 URL 相同则恢复下载。
+                        // 但这里我们将 URL 的更改视为新的下载。
+                        // 为简单起见，我们将恢复下载的逻辑放在检查之后。
                     }
                     
-                    // Clear old files from other versions
+                    // 清除其他版本中的旧文件
                     context.externalCacheDir?.listFiles()?.forEach { file ->
                         if (file.name.startsWith("update_") && file.name != finalFileName && file.name != tempFileName) {
                             file.delete()
@@ -107,15 +107,14 @@ object DownloadManager {
                     
                     _downloadState.value = DownloadState(status = DownloadStatus.DOWNLOADING)
                 } else {
-                    // Resume logic
                     if (_downloadState.value.status == DownloadStatus.PAUSED || 
                         _downloadState.value.status == DownloadStatus.ERROR) {
-                        targetFile = tempFile // Ensure we point to temp
+                        targetFile = tempFile // 确保定位到临时位置
                          _downloadState.value = _downloadState.value.copy(status = DownloadStatus.DOWNLOADING, error = null)
                     } else if (_downloadState.value.status == DownloadStatus.COMPLETED) {
                         return@withContext
                     }
-                    // If targetFile was null (e.g. app restart), reset it
+                    // 如果 targetFile 为空（例如，应用程序重启），则将其重置。
                     if (targetFile == null) targetFile = tempFile
                 }
                 
@@ -135,7 +134,7 @@ object DownloadManager {
 
                 var response = client.newCall(buildRequest(downloadedLength)).execute()
 
-                // Non-recursive one-shot fallback for HTTP 416: clear temp and retry full download once.
+                // HTTP 416 的非递归一次性回退：清除临时文件并重试一次完整下载。
                 if (!response.isSuccessful && response.code == 416 && resumed) {
                     response.close()
                     if (targetFile!!.exists() && !targetFile!!.delete()) {
@@ -190,7 +189,7 @@ object DownloadManager {
                         outputStream.write(buffer, 0, bytesRead)
                         totalBytesRead += bytesRead
                         
-                        // Calculate Speed & Progress every 500ms
+                        // 每 500 毫秒计算一次速度和进度
                         val currentTime = System.currentTimeMillis()
                         if (currentTime - lastUpdateTime >= 500) {
                             val timeDiff = currentTime - lastUpdateTime
@@ -211,7 +210,7 @@ object DownloadManager {
                         }
                     }
                     
-                    // Download Complete - Rename to final
+                    // 下载完成 - 重命名为最终名称
                     if (targetFile!!.renameTo(finalFile)) {
                          consecutiveFailures = 0 // 下载成功，重置失败计数
                          _downloadState.value = DownloadState(
@@ -220,7 +219,7 @@ object DownloadManager {
                             speed = "0 KB/s",
                             downloadedBytes = totalBytesRead,
                             totalBytes = totalLength,
-                            file = finalFile // Point to final file
+                            file = finalFile // 定位到最终文件
                         )
                     } else {
                         throw Exception("Failed to rename temp file to apk")
@@ -267,11 +266,11 @@ object DownloadManager {
     
     fun cancelDownload() {
         isCancelled = true
-        // Delete temp file if it exists
+        // 如果临时文件存在，请将其删除。
         targetFile?.delete() 
         consecutiveFailures = 0 // 取消时重置失败计数
         _downloadState.value = DownloadState(status = DownloadStatus.CANCELED)
-        downloadUrl = "" // Reset url to force fresh start next time
+        downloadUrl = "" // 重置 URL 以强制下次重新开始
     }
     
     fun resetState() {
@@ -283,7 +282,7 @@ object DownloadManager {
         consecutiveFailures = 0
     }
     
-    // Check if valid APK exists
+    // 检查是否存在有效的 APK 文件
     fun isApkReady(context: Context, versionName: String): File? {
         val file = File(context.externalCacheDir, "update_$versionName.apk")
         return if (file.exists() && file.length() > 0) file else null
